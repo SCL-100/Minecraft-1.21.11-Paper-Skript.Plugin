@@ -1,0 +1,274 @@
+# ============================================================
+#  全服多类型排行榜 (数据源: PlaceholderAPI Expansion-statistic)
+#  依赖: Skript 2.11+ / skript-placeholders / skript-yaml
+#         PlaceholderAPI + Expansion-statistic
+#  命令: /top [类型]   /stat   /lbrescan   /lbadd <玩家>
+#  数据: plugins/Skript/data/leaderboards.yml (缓存/名单)
+# ============================================================
+
+# 原版统计 -> 排行榜类型 映射
+# mined = statistic_mine_block      (破坏方块总数, 含历史)
+# placed= statistic_place_block     (放置方块总数)
+# deaths= statistic_deaths          (死亡次数)
+# kills = statistic_player_kills    (击杀玩家数)
+# fish  = statistic_fish_caught     (钓上鱼数)
+# play  = statistic_seconds_played  (在线秒数)
+
+on load:
+    load yaml "plugins/Skript/data/leaderboards.yml" as "lb"
+    LB_loadKnown()
+    # 把当前在线玩家加入名单
+    loop all players:
+        set yaml value "known.%uuid of loop-player%" from "lb" to name of loop-player
+        set {lb::known::%uuid of loop-player%} to name of loop-player
+        set yaml value "players.%uuid of loop-player%.name" from "lb" to name of loop-player
+    LB_scan()
+    LB_refresh()
+    save yaml "lb"
+
+on unload:
+    save yaml "lb"
+
+on join:
+    set yaml value "known.%uuid of player%" from "lb" to name of player
+    set {lb::known::%uuid of player%} to name of player
+    set yaml value "players.%uuid of player%.name" from "lb" to name of player
+
+# ---------- 名单读取 ----------
+
+function LB_loadKnown():
+    delete {lb::known::*}
+    set {_nodes::*} to yaml nodes with keys "known" from "lb"
+    loop {_nodes::*}:
+        set {_u} to loop-value
+        if {_u} contains "known.":
+            replace all "known." with "" in {_u}
+        set {lb::known::%{_u}%} to yaml value "known.%{_u}%" from "lb"
+
+# ---------- 从原版统计扫描 ----------
+
+function LB_papi(t: text) :: text:
+    if {_t} is "mined":
+        return "statistic_mine_block"
+    if {_t} is "placed":
+        return "statistic_place_block"
+    if {_t} is "deaths":
+        return "statistic_deaths"
+    if {_t} is "kills":
+        return "statistic_player_kills"
+    if {_t} is "fish":
+        return "statistic_fish_caught"
+    if {_t} is "play":
+        return "statistic_seconds_played"
+    return ""
+
+function LB_scan():
+    set {_types::*} to "mined", "placed", "deaths", "kills", "fish" and "play"
+    loop {lb::known::*}:
+        set {_u} to loop-index
+        set {_name} to loop-value
+        if {_u} is set:
+            set {_op} to offline player from ({_u} parsed as uuid)
+            if {_op} is set:
+                set yaml value "players.%{_u}%.name" from "lb" to {_name}
+                loop {_types::*}:
+                    set {_papi} to LB_papi(loop-value-2)
+                    set {_raw} to placeholder {_papi} from {_op}
+                    set {_n} to {_raw} parsed as number
+                    if {_n} is set:
+                        set yaml value "players.%{_u}%.%loop-value-2%" from "lb" to {_n}
+            wait 1 tick
+
+function LB_refresh():
+    set {_types::*} to "mined", "placed", "deaths", "kills", "fish" and "play"
+    loop {_types::*}:
+        set {_t} to loop-value
+        delete {lb::sorted::%{_t}%::*}
+        delete {lb::tmp::*}
+        loop {lb::known::*}:
+            set {_v} to yaml value "players.%loop-index%.%{_t}%" from "lb"
+            if {_v} is set:
+                add loop-index to {lb::tmp::*}
+        sort {lb::tmp::*} in descending order by (yaml value "players.%input%.%{_t}%" from "lb")
+        loop {lb::tmp::*}:
+            set {lb::sorted::%{_t}%::%loop-index%} to loop-value
+        delete {lb::tmp::*}
+
+# ---------- 显示工具 ----------
+
+function LB_type(arg: text) :: text:
+    if {_arg} is "mined", "挖掘", "挖矿" or "矿":
+        return "mined"
+    if {_arg} is "placed", "放置", "建造" or "建筑":
+        return "placed"
+    if {_arg} is "deaths", "死亡", "死" or "寄":
+        return "deaths"
+    if {_arg} is "kills", "击杀", "杀" or "杀敌":
+        return "kills"
+    if {_arg} is "fish", "钓鱼", "渔" or "捞":
+        return "fish"
+    if {_arg} is "play", "时长", "在线", "时间":
+        return "play"
+    return ""
+
+function LB_title(t: text) :: text:
+    if {_t} is "mined":
+        return "&6&l⛏ 全服挖掘排行榜"
+    if {_t} is "placed":
+        return "&9&l🏗 全服建造排行榜"
+    if {_t} is "deaths":
+        return "&4&l💀 全服死亡排行榜"
+    if {_t} is "kills":
+        return "&c&l⚔ 全服击杀排行榜"
+    if {_t} is "fish":
+        return "&3&l🎣 全服钓鱼排行榜"
+    if {_t} is "play":
+        return "&a&l⏱ 全服肝帝排行榜"
+    return "&6&l排行榜"
+
+function LB_name(t: text) :: text:
+    if {_t} is "mined":
+        return "&6挖掘方块"
+    if {_t} is "placed":
+        return "&9放置方块"
+    if {_t} is "deaths":
+        return "&4死亡次数"
+    if {_t} is "kills":
+        return "&c击杀玩家"
+    if {_t} is "fish":
+        return "&3钓上鱼"
+    if {_t} is "play":
+        return "&a在线时长"
+    return {_t}
+
+function LB_fmt(t: text, v: number) :: text:
+    if {_t} is "play":
+        set {_h} to floor({_v} / 3600)
+        set {_m} to floor(mod({_v}, 3600) / 60)
+        return "%{_h}%小时%{_m}%分"
+    return "%{_v}%"
+
+# ---------- /top ----------
+
+command /top [<text>]:
+    aliases: /排行, /排行榜
+    trigger:
+        set {_t} to LB_type(arg-1 ? "mined")
+        if {_t} is "":
+            send "&c用法: /top <类型>  &7类型: 挖掘/建造/死亡/击杀/钓鱼/时长"
+            stop
+        send "&8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &8&m"
+        send ""
+        send "  %LB_title({_t})%"
+        send ""
+        if {lb::sorted::%{_t}%::1} is not set:
+            send "  &7暂无数据, 请管理员执行 &f/lbrescan &7扫描统计"
+            send ""
+            stop
+        loop 10 times:
+            set {_u} to {lb::sorted::%{_t}%::%loop-number%}
+            if {_u} is set:
+                set {_v} to yaml value "players.%{_u}%.%{_t}%" from "lb"
+                set {_nm} to yaml value "players.%{_u}%.name" from "lb"
+                if {_nm} is not set:
+                    set {_nm} to {_u}
+                set {_show} to LB_fmt({_t}, {_v})
+                if loop-number is 1:
+                    send "  &6&l#1 &e%{_nm}% &8» &b%{_show}%"
+                else if loop-number is 2:
+                    send "  &f&l#2 &f%{_nm}% &8» &b%{_show}%"
+                else if loop-number is 3:
+                    send "  &7&l#3 &7%{_nm}% &8» &b%{_show}%"
+                else:
+                    send "  &8#%loop-number% &7%{_nm}% &8» &b%{_show}%"
+        set {_my} to ""
+        set {_i} to 0
+        loop {lb::sorted::%{_t}%::*}:
+            set {_i} to {_i} + 1
+            if loop-value is uuid of player:
+                set {_my} to "&a你的排名: &f#%{_i}%"
+        if {_my} is not "":
+            send ""
+            send "  %{_my}%"
+        send ""
+
+# ---------- /stat ----------
+
+command /stat:
+    aliases: /我的统计, /数据
+    trigger:
+        send "&8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &r &8&m &8&m"
+        send ""
+        send "  &6&l📊 %player% 的个人统计"
+        send ""
+        loop "mined", "placed", "deaths", "kills", "fish" and "play":
+            set {_v} to yaml value "players.%uuid of player%.%loop-value%" from "lb"
+            if {_v} is not set:
+                set {_v} to 0
+            send "  %LB_name(loop-value)%&8: &b%LB_fmt(loop-value, {_v})%"
+        send ""
+
+# ---------- 管理命令 ----------
+
+command /lbrescan:
+    permission: lb.admin
+    permission message: &c你没有权限.
+    trigger:
+        send "&7正在扫描原版统计..."
+        LB_scan()
+        LB_refresh()
+        save yaml "lb"
+        send "&a扫描完成, 共 %size of {lb::known::*}% 名玩家."
+
+command /lbadd <text>:
+    permission: lb.admin
+    permission message: &c你没有权限.
+    trigger:
+        # 支持: 在线玩家名 或 玩家UUID
+        set {_uuid} to ""
+        loop all players:
+            if name of loop-player is arg-1:
+                set {_uuid} to "%uuid of loop-player%"
+        if {_uuid} is "":
+            set {_u} to arg-1 parsed as uuid
+            if {_u} is set:
+                set {_uuid} to "%{_u}%"
+        if {_uuid} is "":
+            send "&c找不到玩家 &f%arg-1%&c, 请输入在线玩家名或UUID."
+            stop
+        set yaml value "known.%{_uuid}%" from "lb" to arg-1
+        set {lb::known::%{_uuid}%} to arg-1
+        save yaml "lb"
+        send "&a已加入名单: &f%arg-1%&a, 执行 /lbrescan 生效."
+
+# ---------- 对外占位符 (%lb_...) ----------
+
+placeholderapi placeholder with the prefix "lb":
+    set {_parts::*} to split the identifier at "_"
+    set {_t} to {_parts::2}
+    if {_t} is not "mined", "placed", "deaths", "kills", "fish" or "play":
+        set the result to "-"
+        stop
+    if {_parts::1} is "top":
+        set {_r} to {_parts::3} parsed as number
+        set {_u} to {lb::sorted::%{_t}%::%{_r}%}
+        if {_u} is not set:
+            set the result to "-"
+            stop
+        if {_parts::4} is "name":
+            set {_nm} to yaml value "players.%{_u}%.name" from "lb"
+            set the result to ({_nm} ? {_u})
+        else if {_parts::4} is "value":
+            set {_v} to yaml value "players.%{_u}%.%{_t}%" from "lb"
+            set the result to ({_v} ? 0)
+    else if {_parts::1} is "total":
+        set the result to size of {lb::sorted::%{_t}%::*}
+    else:
+        set the result to "-"
+
+# ---------- 自动扫描 ----------
+
+every 15 minutes:
+    LB_scan()
+    LB_refresh()
+    save yaml "lb"
