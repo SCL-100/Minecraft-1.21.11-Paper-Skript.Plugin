@@ -1,0 +1,225 @@
+#
+# 经验银行系统 - ExpBank
+#
+
+options:
+    prefix: &6[&e经验银行&6] &r
+    min_amount: 1
+
+# ==================== 主命令（4个参数槽位）====================
+command /expbank [<text>] [<text>] [<text>] [<text>]:
+    aliases: /eb, /bank
+    description: 经验银行主命令
+    usage: /expbank [deposit/withdraw/pay/balance/admin] [参数...]
+    trigger:
+        set {_action} to arg-1 ? "menu"
+        
+        # ========== 存入 ==========
+        if {_action} is "deposit" or "d":
+            set {_amount} to arg-2 parsed as integer
+            if {_amount} is not set:
+                send "{@prefix}&c用法: /expbank deposit <数量>" to player
+                stop
+            if {_amount} < {@min_amount}:
+                send "{@prefix}&c存入数量必须 ≥ {@min_amount}" to player
+                stop
+            if player's total experience < {_amount}:
+                send "{@prefix}&c经验不足！身上只有 &e%player's total experience% &c点" to player
+                stop
+            
+            remove {_amount} from player's total experience
+            add {_amount} to {expbank::%player's uuid%}
+            send "{@prefix}&a成功存入 &e%{_amount}% &a点经验" to player
+            play sound "ENTITY_EXPERIENCE_ORB_PICKUP" with volume 0.6 to player
+        
+        # ========== 取出（增强版）==========
+        else if {_action} is "withdraw" or "w":
+            set {_amount} to arg-2 parsed as integer
+            if {_amount} is not set:
+                send "{@prefix}&c用法: /expbank withdraw <数量>" to player
+                stop
+            if {_amount} < {@min_amount}:
+                send "{@prefix}&c取出数量必须 ≥ {@min_amount}" to player
+                stop
+            
+            if {expbank::%player's uuid%} is not set:
+                set {expbank::%player's uuid%} to 0
+            if {expbank::%player's uuid%} < {_amount}:
+                send "{@prefix}&c余额不足！银行剩余 &e%{expbank::%player's uuid%}%" to player
+                stop
+            
+            # 扣除银行余额
+            remove {_amount} from {expbank::%player's uuid%}
+            
+            # 拆分多个经验球（每100点一个，避免单球过大）
+            set {_orb_count} to ceil({_amount} / 100)
+            set {_per_orb} to floor({_amount} / {_orb_count})
+            set {_remainder} to {_amount} - ({_per_orb} * {_orb_count})
+            
+            loop {_orb_count} times:
+                set {_orb_exp} to {_per_orb}
+                if loop-number is {_orb_count}:
+                    add {_remainder} to {_orb_exp}
+                
+                # 在玩家头顶生成 + 随机偏移
+                set {_loc} to location of player
+                set y-coordinate of {_loc} to y-coordinate of {_loc} + 2
+                add random number between -0.3 and 0.3 to x-coordinate of {_loc}
+                add random number between -0.3 and 0.3 to z-coordinate of {_loc}
+                
+                spawn experience orb at {_loc}
+                set experience of last spawned entity to {_orb_exp}
+                
+                # 让经验球快速飞向玩家（2tick后传送到玩家身边）
+                wait 2 ticks
+                teleport last spawned entity to location of player
+            
+
+            
+            # 音效
+            play sound "ENTITY_PLAYER_LEVELUP" with volume 0.8 to player
+            play sound "ENTITY_EXPERIENCE_ORB_PICKUP" with volume 0.5 to player
+            
+            send "{@prefix}&a成功取出 &e%{_amount}% &a点经验！经验球已汇聚到你身边" to player
+        
+        # ========== 转账(pay) ==========
+        else if {_action} is "pay" or "p":
+            set {_target} to arg-2 parsed as player
+            set {_amount} to arg-3 parsed as integer
+            
+            if {_target} is not set:
+                send "{@prefix}&c用法: /expbank pay <玩家> <数量>" to player
+                stop
+            if {_amount} is not set:
+                send "{@prefix}&c用法: /expbank pay <玩家> <数量>" to player
+                stop
+            if {_target} is not online:
+                send "{@prefix}&c目标玩家不在线！" to player
+                stop
+            if {_target} is player:
+                send "{@prefix}&c不能给自己转账！" to player
+                stop
+            if {_amount} < {@min_amount}:
+                send "{@prefix}&c转账数量必须 ≥ {@min_amount}" to player
+                stop
+            
+            if {expbank::%player's uuid%} is not set:
+                set {expbank::%player's uuid%} to 0
+            if {expbank::%player's uuid%} < {_amount}:
+                send "{@prefix}&c余额不足！" to player
+                stop
+            
+            remove {_amount} from {expbank::%player's uuid%}
+            add {_amount} to {expbank::%{_target}'s uuid%}
+            
+            send "{@prefix}&a你向 &e%{_target}% &a转账了 &e%{_amount}% &a点经验" to player
+            send "{@prefix}&e%player% &a向你转账了 &e%{_amount}% &a点经验" to {_target}
+            play sound "ENTITY_EXPERIENCE_ORB_PICKUP" to player
+            play sound "ENTITY_EXPERIENCE_ORB_PICKUP" to {_target}
+        
+        # ========== 查询余额 ==========
+        else if {_action} is "balance" or "bal" or "b":
+            if {expbank::%player's uuid%} is not set:
+                set {expbank::%player's uuid%} to 0
+            
+            set {_bank} to {expbank::%player's uuid%}
+            set {_held} to player's total experience
+            
+            send "" to player
+            send "  &6========== 经验银行 ==========" to player
+            send "  &a银行余额: &e%{_bank}% &a点" to player
+            send "  &a身上经验: &e%{_held}% &a点" to player
+            send "  &a资产总计: &e%{_bank} + {_held}% &a点" to player
+            send "  &6=============================" to player
+            send "" to player
+        
+        # ========== 打开菜单 ==========
+        else if {_action} is "menu" or "m":
+            execute console command "dm open expbank %player%"
+        
+        # ========== 管理员命令 ==========
+        else if {_action} is "admin":
+            if player does not have permission "expbank.admin":
+                send "{@prefix}&c你没有权限！" to player
+                stop
+            
+            set {_sub} to arg-2
+            set {_target} to arg-3 parsed as offline player
+            set {_value} to arg-4 parsed as integer
+            
+            if {_sub} is "set":
+                if {_target} is not set:
+                    send "{@prefix}&c用法: /expbank admin set <玩家> <数量>" to player
+                    stop
+                if {_value} is not set:
+                    send "{@prefix}&c用法: /expbank admin set <玩家> <数量>" to player
+                    stop
+                set {expbank::%{_target}'s uuid%} to {_value}
+                send "{@prefix}&a已设置 &e%{_target}% &a的余额为 &e%{_value}%" to player
+            
+            else if {_sub} is "add":
+                if {_target} is not set:
+                    send "{@prefix}&c用法: /expbank admin add <玩家> <数量>" to player
+                    stop
+                if {_value} is not set:
+                    send "{@prefix}&c用法: /expbank admin add <玩家> <数量>" to player
+                    stop
+                add {_value} to {expbank::%{_target}'s uuid%}
+                send "{@prefix}&a已为 &e%{_target}% &a增加 &e%{_value}% &a点" to player
+            
+            else if {_sub} is "remove":
+                if {_target} is not set:
+                    send "{@prefix}&c用法: /expbank admin remove <玩家> <数量>" to player
+                    stop
+                if {_value} is not set:
+                    send "{@prefix}&c用法: /expbank admin remove <玩家> <数量>" to player
+                    stop
+                remove {_value} from {expbank::%{_target}'s uuid%}
+                send "{@prefix}&a已为 &e%{_target}% &a扣除 &e%{_value}% &a点" to player
+            
+            else if {_sub} is "reset":
+                if {_target} is not set:
+                    send "{@prefix}&c用法: /expbank admin reset <玩家>" to player
+                    stop
+                delete {expbank::%{_target}'s uuid%}
+                send "{@prefix}&a已清空 &e%{_target}% &a的余额" to player
+            
+            else:
+                if {_target} is not set:
+                    send "{@prefix}&c用法: /expbank admin [set/add/remove/reset] <玩家> [数量]" to player
+                    stop
+                set {_bal} to {expbank::%{_target}'s uuid%}
+                if {_bal} is not set:
+                    set {_bal} to 0
+                send "{@prefix}&e%{_target}% &a的余额: &e%{_bal}% &a点" to player
+        
+        # ========== 默认：帮助信息 ==========
+        else:
+            send "" to player
+            send "  &6========== 经验银行帮助 ==========" to player
+            send "  &e/expbank deposit <数量> &7- 存入经验" to player
+            send "  &e/expbank withdraw <数量> &7- 取出经验" to player
+            send "  &e/expbank pay <玩家> <数量> &7- 转账" to player
+            send "  &e/expbank balance &7- 查询余额" to player
+            send "  &e/bank &7- 打开银行菜单" to player
+            send "  &6===================================" to player
+            send "" to player
+                               
+#
+# PAPI 占位符注册（skript-placeholders 1.7.1）
+#
+papi placeholder for prefix "expbank":
+    if the identifier is "balance":
+        set {_uuid} to the player's uuid
+        set {_bal} to {expbank::%{_uuid}%}
+        if {_bal} is not set:
+            set {_bal} to 0
+        set the result to "%{_bal}%"
+    
+    if the identifier is "total":
+        set {_uuid} to the player's uuid
+        set {_bank} to {expbank::%{_uuid}%}
+        if {_bank} is not set:
+            set {_bank} to 0
+        set {_held} to the player's total experience
+        set the result to "%{_bank} + {_held}%"
