@@ -1,0 +1,432 @@
+# ============================================
+# 低保系统 - 修复 player_list 序列化问题
+# ============================================
+
+options:
+    dibao.data: plugins/Skript/dibao/dibao_data.yml
+    dibao.log: dibao
+    dibao.alias: dibao
+    dibao.amount: 160
+    dibao.days: 5
+    dibao.min-balance: 20
+
+# ============================================
+# 初始化
+# ============================================
+on load:
+    load yaml "{@dibao.data}" as "{@dibao.alias}"
+    send "&a[低保系统] 加载成功！" to console
+
+# ============================================
+# 玩家上线提醒
+# ============================================
+on join:
+    wait 3 seconds
+    set {_name} to name of player
+    set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+    
+    if {_status} is not set:
+        stop
+    
+    set {_days} to yaml value "%{_name}%.days_remaining" from "{@dibao.alias}"
+    set {_total} to yaml value "%{_name}%.total_received" from "{@dibao.alias}"
+    set {_approved} to yaml value "%{_name}%.approved" from "{@dibao.alias}"
+    set {_last_paid} to yaml value "%{_name}%.last_paid" from "{@dibao.alias}"
+    
+    if {_status} is "pending":
+        if {_approved} is false:
+            send ""
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            send "  &e⚠ 低保申请提醒"
+            send ""
+            send "  &7你的低保申请正在 &c等待管理员审核"
+            send "  &7请耐心等待，或联系管理员处理。"
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            send ""
+        else:
+            send ""
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            send "  &a✔ 低保申请已通过审核！"
+            send ""
+            send "  &7你的低保将从 &e明日 00:00 &7开始发放"
+            send "  &7每日 &e{@dibao.amount} &7金币，共 &e{@dibao.days} &7天"
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            send ""
+    
+    else if {_status} is "active":
+        set {_today} to now formatted as "yyyy-MM-dd"
+        set {_last_date} to {_last_paid} formatted as "yyyy-MM-dd" if {_last_paid} is set, else "none"
+        
+        send ""
+        send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        send "  &a💰 低保发放提醒"
+        send ""
+        if {_last_date} is {_today}:
+            send "  &a今日低保已发放！"
+            send "  &7发放金额: &e{@dibao.amount} &7金币"
+        else:
+            send "  &e今日低保将在 00:00 后自动发放"
+        send "  &7剩余天数: &e%{_days}% &7天"
+        send "  &7已领取总额: &e%{_total}% &7金币"
+        send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        send ""
+    
+    else if {_status} is "completed":
+        send ""
+        send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        send "  &a✅ 低保发放已结束"
+        send ""
+        send "  &7本轮低保已全部发放完毕"
+        send "  &7你共获得 &e%{_total}% &7金币"
+        send "  &7感谢使用低保系统！"
+        send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        send ""
+
+# ============================================
+# /dibao 主命令（支持双参数）
+# ============================================
+command /dibao [<text>] [<text>]:
+    description: 低保系统
+    trigger:
+        # ========== 无参数 = 申请 ==========
+        if arg-1 is not set:
+            set {_name} to name of player
+            set {_balance} to player's balance
+            
+            if {_balance} >= {@dibao.min-balance}:
+                send "&c你的金币还有 &e%{_balance}% &c，不符合申请条件（需低于 &e{@dibao.min-balance}&c）！"
+                stop
+            
+            set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+            
+            if {_status} is set:
+                if {_status} is "pending":
+                    send "&c你已经提交过申请了，请等待管理员审核！"
+                    stop
+                else if {_status} is "active":
+                    set {_days} to yaml value "%{_name}%.days_remaining" from "{@dibao.alias}"
+                    send "&c你已经在领取低保了！还剩 &e%{_days}% &c天。"
+                    stop
+                else if {_status} is "completed":
+                    set {_total} to yaml value "%{_name}%.total_received" from "{@dibao.alias}"
+                    send "&c你已经领完本轮低保了！共获得 &e%{_total}% &c金币。"
+                    stop
+            
+            set {_now} to now formatted as "yyyy-MM-dd HH:mm:ss"
+            set yaml value "%{_name}%.uuid" from "{@dibao.alias}" to "%uuid of player%"
+            set yaml value "%{_name}%.approved" from "{@dibao.alias}" to false
+            set yaml value "%{_name}%.days_remaining" from "{@dibao.alias}" to {@dibao.days}
+            set yaml value "%{_name}%.total_received" from "{@dibao.alias}" to 0
+            set yaml value "%{_name}%.status" from "{@dibao.alias}" to "pending"
+            set yaml value "%{_name}%.apply_time" from "{@dibao.alias}" to {_now}
+            
+            add {_name} to yaml list "player_list" from "{@dibao.alias}"
+            
+            save yaml "{@dibao.alias}"
+            
+            send "&a✔ 低保申请已提交！"
+            send "&7━━━━━━━━━━━━━━━━━━━━━━━"
+            send "&7  申请玩家: &f%{_name}%"
+            send "&7  当前余额: &e%{_balance}%"
+            send "&7  每日金额: &e{@dibao.amount}"
+            send "&7  发放天数: &e{@dibao.days} &7天"
+            send "&7━━━━━━━━━━━━━━━━━━━━━━━"
+            send "&7请耐心等待管理员审核。"
+            send "&7管理员通过方式: 打开 &f{@dibao.data} &7将你的 approved 改为 &etrue"
+            stop
+        
+        # ========== status ==========
+        else if arg-1 is "status":
+            set {_name} to name of player
+            set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+            
+            if {_status} is not set:
+                send "&c你还没有申请过低保！使用 &e/dibao &c申请。"
+                stop
+            
+            set {_days} to yaml value "%{_name}%.days_remaining" from "{@dibao.alias}"
+            set {_total} to yaml value "%{_name}%.total_received" from "{@dibao.alias}"
+            set {_approved} to yaml value "%{_name}%.approved" from "{@dibao.alias}"
+            set {_apply_time} to yaml value "%{_name}%.apply_time" from "{@dibao.alias}"
+            
+            send "&6━━━━━━━━ 低保状态 ━━━━━━━━"
+            send "&7玩家: &f%{_name}%"
+            send "&7申请时间: &f%{_apply_time}%"
+            if {_approved} is true:
+                send "&7审核状态: &a已通过 ✔"
+            else:
+                send "&7审核状态: &c待审核 ✘"
+            if {_status} is "pending":
+                send "&7发放状态: &e等待审核"
+            else if {_status} is "active":
+                send "&7发放状态: &a发放中"
+                send "&7剩余天数: &e%{_days}% &7天"
+                send "&7已领取总额: &e%{_total}% &7金币"
+            else if {_status} is "completed":
+                send "&7发放状态: &a已完成"
+                send "&7已领取总额: &e%{_total}% &7金币"
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━━"
+            stop
+        
+        # ========== admin ==========
+        else if arg-1 is "admin":
+            if player doesn't have permission "dibao.admin":
+                send "&c你没有权限！"
+                stop
+            
+            load yaml "{@dibao.data}" as "{@dibao.alias}"
+            set {_found} to false
+            send "&6━━━━━━ 待审核低保申请 ━━━━━━"
+            
+            set {_players::*} to yaml list "player_list" from "{@dibao.alias}"
+            if {_players::*} is set:
+                loop {_players::*}:
+                    set {_name} to loop-value
+                    if {_name} is "":
+                        continue
+                    
+                    set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+                    set {_approved} to yaml value "%{_name}%.approved" from "{@dibao.alias}"
+                    
+                    if {_status} is "pending":
+                        set {_found} to true
+                        if {_approved} is false:
+                            send "&7- &f%{_name}% &7[&c待审核&7] (改 approved 为 true)"
+                        else:
+                            send "&7- &f%{_name}% &7[&a已通过&7] (等待明日发放)"
+            
+            if {_found} is false:
+                send "&7暂无待审核申请"
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            stop
+        
+        # ========== reload ==========
+        else if arg-1 is "reload":
+            if player doesn't have permission "dibao.admin":
+                send "&c你没有权限！"
+                stop
+            
+            load yaml "{@dibao.data}" as "{@dibao.alias}"
+            send "&a低保数据已重载！"
+            stop
+        
+        # ========== debug ==========
+        else if arg-1 is "debug":
+            if player doesn't have permission "dibao.admin":
+                send "&c你没有权限！"
+                stop
+            
+            send "&6━━━━━━ 调试信息 ━━━━━━"
+            send "&7别名: &f{@dibao.alias}"
+            send "&7文件路径: &f{@dibao.data}"
+            send "&6━━━━━━━━━━━━━━━━━━━━"
+            stop
+        
+        # ========== add 手动添加玩家 ==========
+        else if arg-1 is "add":
+            if player doesn't have permission "dibao.admin":
+                send "&c你没有权限！"
+                stop
+            
+            if arg-2 is not set:
+                send "&c用法: /dibao add <玩家名>"
+                stop
+            
+            set {_target_name} to arg-2
+            set {_target} to {_target_name} parsed as offline player
+            
+            if {_target} is not set:
+                send "&c找不到玩家 &e%{_target_name}%&c！请确认该玩家至少登录过一次服务器。"
+                stop
+            
+            set {_name} to name of {_target}
+            set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+            
+            if {_status} is set:
+                if {_status} is "pending":
+                    send "&c玩家 &e%{_name}% &c已有待审核申请！"
+                    stop
+                else if {_status} is "active":
+                    set {_days} to yaml value "%{_name}%.days_remaining" from "{@dibao.alias}"
+                    send "&c玩家 &e%{_name}% &c正在领取低保中！还剩 &e%{_days}% &c天。"
+                    stop
+                else if {_status} is "completed":
+                    send "&c玩家 &e%{_name}% &c已领完本轮低保！"
+                    stop
+            
+            set {_now} to now formatted as "yyyy-MM-dd HH:mm:ss"
+            set yaml value "%{_name}%.uuid" from "{@dibao.alias}" to "%uuid of {_target}%"
+            set yaml value "%{_name}%.approved" from "{@dibao.alias}" to true
+            set yaml value "%{_name}%.days_remaining" from "{@dibao.alias}" to {@dibao.days}
+            set yaml value "%{_name}%.total_received" from "{@dibao.alias}" to 0
+            set yaml value "%{_name}%.status" from "{@dibao.alias}" to "pending"
+            set yaml value "%{_name}%.apply_time" from "{@dibao.alias}" to {_now}
+            set yaml value "%{_name}%.added_by" from "{@dibao.alias}" to name of player
+            
+            add {_name} to yaml list "player_list" from "{@dibao.alias}"
+            save yaml "{@dibao.alias}"
+            
+            send "&a✔ 已将 &e%{_name}% &a加入低保列表！"
+            send "&7━━━━━━━━━━━━━━━━━━━━━━━"
+            send "&7  添加人: &f%name of player%"
+            send "&7  审核状态: &a已通过（管理员手动）"
+            send "&7  每日金额: &e{@dibao.amount}"
+            send "&7  发放天数: &e{@dibao.days} &7天"
+            send "&7  开始时间: &e明日 00:00"
+            send "&7━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            if {_target} is online:
+                send "&a[低保系统] 管理员已将你加入低保名单，明日开始每日发放 &e{@dibao.amount}&a 金币，共 &e{@dibao.days}&a 天！" to {_target}
+            stop
+        # ========== test 手动测试 ==========
+        else if arg-1 is "test":
+            if player doesn't have permission "dibao.admin":
+                send "&c你没有权限！"
+                stop
+            
+            send "&6━━━━━━ 手动测试发放 ━━━━━━" to player
+            load yaml "{@dibao.data}" as "{@dibao.alias}"
+            set {_paid_count} to 0
+            
+            # 关键修复：用 yaml list 读取
+            set {_players::*} to yaml list "player_list" from "{@dibao.alias}"
+            if {_players::*} is not set:
+                send "&c错误: player_list 为空！请先 /dibao 申请" to player
+                stop
+            
+            send "&7玩家数量: &f%size of {_players::*}%" to player
+            
+            loop {_players::*}:
+                set {_name} to loop-value
+                if {_name} is "":
+                    continue
+                
+                set {_approved} to yaml value "%{_name}%.approved" from "{@dibao.alias}"
+                set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+                set {_days} to yaml value "%{_name}%.days_remaining" from "{@dibao.alias}"
+                
+                send "&7检查: &f%{_name}% &7| approved=&f%{_approved}% &7| status=&f%{_status}% &7| days=&f%{_days}%" to player
+                
+                if {_approved} is true:
+                    if {_status} is "pending":
+                        set yaml value "%{_name}%.status" from "{@dibao.alias}" to "active"
+                        set {_status} to "active"
+                        send "&a%{_name}% 状态已改为 active" to player
+                    
+                    if {_status} is "active":
+                        if {_days} > 0:
+                            set {_uuid} to yaml value "%{_name}%.uuid" from "{@dibao.alias}"
+                            set {_p} to {_uuid} parsed as offline player
+                            
+                            if {_p} is set:
+                                add {@dibao.amount} to {_p}'s balance
+                                
+                                set {_new_days} to {_days} - 1
+                                set yaml value "%{_name}%.days_remaining" from "{@dibao.alias}" to {_new_days}
+                                
+                                set {_total} to yaml value "%{_name}%.total_received" from "{@dibao.alias}"
+                                set {_new_total} to {_total} + {@dibao.amount}
+                                set yaml value "%{_name}%.total_received" from "{@dibao.alias}" to {_new_total}
+                                
+                                set yaml value "%{_name}%.last_paid" from "{@dibao.alias}" to now formatted as "yyyy-MM-dd HH:mm:ss"
+                                save yaml "{@dibao.alias}"
+                                
+                                send "&a✔ %{_name}% 获得 {@dibao.amount} 金币！剩余 %{_new_days}% 天" to player
+                                set {_paid_count} to {_paid_count} + 1
+                                
+                                if {_new_days} <= 0:
+                                    set yaml value "%{_name}%.status" from "{@dibao.alias}" to "completed"
+                                    send "&a%{_name}% 本轮已发完！" to player
+                            else:
+                                send "&c%{_name}% 玩家对象获取失败" to player
+                        else:
+                            send "&7%{_name}% 剩余天数为0，跳过" to player
+                    else:
+                        send "&7%{_name}% 状态不是 active，跳过" to player
+                else:
+                    send "&7%{_name}% approved 为 false，跳过" to player
+            
+            save yaml "{@dibao.alias}"
+            send "&6━━━━━━━━━━━━━━━━━━━━━━━" to player
+            send "&a测试完成！共发放 &e%{_paid_count}% &a人" to player
+            stop
+        
+        # ========== 未知参数 ==========
+        else:
+            send "&c未知参数！可用:"
+            send "&7/dibao &f- 申请"
+            send "&7/dibao status &f- 状态"
+            send "&7/dibao admin &f- 审核列表"
+            send "&7/dibao reload &f- 重载"
+            send "&7/dibao debug &f- 调试"
+            send "&7/dibao test &f- 手动测试发放"
+
+# ============================================
+# 每日发放
+# ============================================
+every hour:
+    set {_hour} to now formatted as "HH"
+    if {_hour} is not "00":
+        stop
+    
+    load yaml "{@dibao.data}" as "{@dibao.alias}"
+    
+    # 防重复
+    set {_today} to now formatted as "yyyy-MM-dd"
+    set {_last_run} to yaml value "last_run_date" from "{@dibao.alias}"
+    if {_last_run} is {_today}:
+        stop
+    
+    set {_paid_count} to 0
+    
+    # 关键修复：用 yaml list 读取
+    set {_players::*} to yaml list "player_list" from "{@dibao.alias}"
+    if {_players::*} is not set:
+        stop
+    
+    loop {_players::*}:
+        set {_name} to loop-value
+        if {_name} is "":
+            continue
+        
+        set {_approved} to yaml value "%{_name}%.approved" from "{@dibao.alias}"
+        set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
+        set {_days} to yaml value "%{_name}%.days_remaining" from "{@dibao.alias}"
+        
+        if {_approved} is true:
+            if {_status} is "pending":
+                set yaml value "%{_name}%.status" from "{@dibao.alias}" to "active"
+                set {_status} to "active"
+                set {_uuid} to yaml value "%{_name}%.uuid" from "{@dibao.alias}"
+                set {_player} to {_uuid} parsed as offline player
+                if {_player} is online:
+                    send "&a[低保系统] 你的申请已通过审核，从今天开始发放低保！" to {_player}
+            
+            if {_status} is "active":
+                if {_days} > 0:
+                    set {_uuid} to yaml value "%{_name}%.uuid" from "{@dibao.alias}"
+                    set {_player} to {_uuid} parsed as offline player
+                    
+                    if {_player} is set:
+                        add {@dibao.amount} to {_player}'s balance
+                        
+                        set {_new_days} to {_days} - 1
+                        set yaml value "%{_name}%.days_remaining" from "{@dibao.alias}" to {_new_days}
+                        
+                        set {_total} to yaml value "%{_name}%.total_received" from "{@dibao.alias}"
+                        set {_new_total} to {_total} + {@dibao.amount}
+                        set yaml value "%{_name}%.total_received" from "{@dibao.alias}" to {_new_total}
+                        
+                        set yaml value "%{_name}%.last_paid" from "{@dibao.alias}" to now formatted as "yyyy-MM-dd HH:mm:ss"
+                        
+                        set {_paid_count} to {_paid_count} + 1
+                        
+                        if {_new_days} <= 0:
+                            set yaml value "%{_name}%.status" from "{@dibao.alias}" to "completed"
+                            if {_player} is online:
+                                send "&a[低保] 本轮低保已全部发放完毕！共计获得 &e%{_new_total}% &a金币。" to {_player}
+    
+    if {_paid_count} > 0:
+        set yaml value "last_run_date" from "{@dibao.alias}" to {_today}
+        save yaml "{@dibao.alias}"
+        broadcast "&7[系统] &a今日共为 &e%{_paid_count}% &a位玩家发放了低保。"

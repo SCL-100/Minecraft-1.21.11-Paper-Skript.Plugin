@@ -1,0 +1,761 @@
+# ============================================
+# 陶罐酿酒系统 - Brewery System
+# 适用于 Skript 2.14+ & Minecraft 1.21+
+# 扩展配方版 - 16种酒 + 1种假酒
+# ============================================
+
+options:
+    maxDrunk: 100
+    drunkDecay: 5
+    drunkTick: 30 seconds
+    checkTick: 10 seconds
+    displayTick: 3 seconds
+
+# ============================================
+# 工具函数
+# ============================================
+
+function brewKey(loc: location) :: text:
+    return "%x-coord of {_loc}%,%y-coord of {_loc}%,%z-coord of {_loc}%,%name of world of {_loc}%"
+
+function getRecipe(p: player) :: text:
+    if inventory of {_p} contains 2 honey bottle:
+        if inventory of {_p} contains 1 wheat:
+            return "honey_wine"
+    # 假酒必须在真烈焰烈酒之前检查
+    if inventory of {_p} contains 1 blaze powder:
+        if inventory of {_p} contains 1 spider eye:
+            return "fake_fire"
+    if inventory of {_p} contains 2 blaze powder:
+        if inventory of {_p} contains 1 fermented spider eye:
+            return "fire_liquor"
+    if inventory of {_p} contains 4 sweet berries:
+        if inventory of {_p} contains 2 sugar:
+            return "berry_wine"
+    if inventory of {_p} contains 4 potato:
+        if inventory of {_p} contains 1 fermented spider eye:
+            return "vodka"
+    if inventory of {_p} contains 6 sugar cane:
+        if inventory of {_p} contains 2 sugar:
+            return "rum"
+    if inventory of {_p} contains 3 seagrass:
+        if inventory of {_p} contains 2 wheat:
+            return "sake"
+    if inventory of {_p} contains 4 wheat:
+        if inventory of {_p} contains 1 oak log:
+            return "whiskey"
+    if inventory of {_p} contains 4 cactus:
+        if inventory of {_p} contains 1 sugar:
+            return "tequila"
+    if inventory of {_p} contains 1 golden apple:
+        if inventory of {_p} contains 2 sugar:
+            return "brandy"
+    if inventory of {_p} contains 3 warped fungus:
+        if inventory of {_p} contains 2 glow berries:
+            return "absinthe"
+    if inventory of {_p} contains 4 apple:
+        if inventory of {_p} contains 1 sugar:
+            return "cider"
+    if inventory of {_p} contains 5 glow berries:
+        return "moonshine"
+    if inventory of {_p} contains 3 spruce sapling:
+        if inventory of {_p} contains 1 wheat:
+            return "gin"
+    # 女儿红需要5小麦，放在小麦啤酒之前避免被拦截
+    if inventory of {_p} contains 2 magma cream:
+        if inventory of {_p} contains 1 sugar:
+            if inventory of {_p} contains 5 wheat:
+                return "daughter_red"
+    # 白酒（干草块配方，独特原料无冲突）
+    if inventory of {_p} contains 2 hay block:
+        if inventory of {_p} contains 1 fermented spider eye:
+            return "baijiu"
+    if inventory of {_p} contains 3 wheat:
+        return "wheat_beer"
+    return "none"
+
+function removeIngredients(p: player, recipe: text):
+    if {_recipe} is "wheat_beer":
+        remove 3 wheat from {_p}
+    else if {_recipe} is "honey_wine":
+        remove 2 honey bottle from {_p}
+        remove 1 wheat from {_p}
+    else if {_recipe} is "fake_fire":
+        remove 1 blaze powder from {_p}
+        remove 1 spider eye from {_p}
+    else if {_recipe} is "fire_liquor":
+        remove 2 blaze powder from {_p}
+        remove 1 fermented spider eye from {_p}
+    else if {_recipe} is "berry_wine":
+        remove 4 sweet berries from {_p}
+        remove 2 sugar from {_p}
+    else if {_recipe} is "vodka":
+        remove 4 potato from {_p}
+        remove 1 fermented spider eye from {_p}
+    else if {_recipe} is "rum":
+        remove 6 sugar cane from {_p}
+        remove 2 sugar from {_p}
+    else if {_recipe} is "sake":
+        remove 3 seagrass from {_p}
+        remove 2 wheat from {_p}
+    else if {_recipe} is "whiskey":
+        remove 4 wheat from {_p}
+        remove 1 oak log from {_p}
+    else if {_recipe} is "tequila":
+        remove 4 cactus from {_p}
+        remove 1 sugar from {_p}
+    else if {_recipe} is "brandy":
+        remove 1 golden apple from {_p}
+        remove 2 sugar from {_p}
+    else if {_recipe} is "absinthe":
+        remove 3 warped fungus from {_p}
+        remove 2 glow berries from {_p}
+    else if {_recipe} is "cider":
+        remove 4 apple from {_p}
+        remove 1 sugar from {_p}
+    else if {_recipe} is "moonshine":
+        remove 5 glow berries from {_p}
+    else if {_recipe} is "gin":
+        remove 3 spruce sapling from {_p}
+        remove 1 wheat from {_p}
+    else if {_recipe} is "daughter_red":
+        remove 2 magma cream from {_p}
+        remove 1 sugar from {_p}
+        remove 5 wheat from {_p}
+    else if {_recipe} is "baijiu":
+        remove 2 hay block from {_p}
+        remove 1 fermented spider eye from {_p}
+
+function getBrewTime(recipe: text) :: number:
+    if {_recipe} is "wheat_beer":
+        return 30
+    if {_recipe} is "honey_wine":
+        return 45
+    if {_recipe} is "fake_fire":
+        return 114
+    if {_recipe} is "fire_liquor":
+        return 50
+    if {_recipe} is "berry_wine":
+        return 40
+    if {_recipe} is "vodka":
+        return 50
+    if {_recipe} is "rum":
+        return 55
+    if {_recipe} is "sake":
+        return 40
+    if {_recipe} is "whiskey":
+        return 70
+    if {_recipe} is "tequila":
+        return 35
+    if {_recipe} is "brandy":
+        return 80
+    if {_recipe} is "absinthe":
+        return 90
+    if {_recipe} is "cider":
+        return 25
+    if {_recipe} is "moonshine":
+        return 120
+    if {_recipe} is "gin":
+        return 45
+    if {_recipe} is "daughter_red":
+        return 1200
+    if {_recipe} is "baijiu":
+        return 80
+    return 0
+
+function getWineName(recipe: text) :: text:
+    if {_recipe} is "wheat_beer":
+        return "&6小麦啤酒"
+    if {_recipe} is "honey_wine":
+        return "&d蜂蜜酒"
+    if {_recipe} is "fake_fire":
+        return "&c烈焰烈酒&r"
+    if {_recipe} is "fire_liquor":
+        return "&c烈焰烈酒"
+    if {_recipe} is "berry_wine":
+        return "&a浆果甜酒"
+    if {_recipe} is "vodka":
+        return "&f伏特加"
+    if {_recipe} is "rum":
+        return "&6朗姆酒"
+    if {_recipe} is "sake":
+        return "&b清酒"
+    if {_recipe} is "whiskey":
+        return "&e威士忌"
+    if {_recipe} is "tequila":
+        return "&2龙舌兰"
+    if {_recipe} is "brandy":
+        return "&6白兰地"
+    if {_recipe} is "absinthe":
+        return "&a苦艾酒"
+    if {_recipe} is "cider":
+        return "&c苹果酒"
+    if {_recipe} is "moonshine":
+        return "&e月光酒"
+    if {_recipe} is "gin":
+        return "&a杜松子酒"
+    if {_recipe} is "daughter_red":
+        return "&c女儿红"
+    if {_recipe} is "baijiu":
+        return "&f白酒"
+    return "&f神秘液体"
+
+function getWineLore(recipe: text) :: texts:
+    if {_recipe} is "wheat_beer":
+        return "&7一种常见的农家自酿酒" and "&e效果：&f速度提升 I (60秒)" and "&c醉酒度：&f+15"
+    if {_recipe} is "honey_wine":
+        return "&7甜润可口的美酒" and "&e效果：&f生命恢复 I (30秒)" and "&c醉酒度：&f+20"
+    if {_recipe} is "fake_fire":
+        return "&7灼热如火，后劲十足" and "&e效果：&f力量提升 I (45秒)" and "&c醉酒度：&f+90(?)"
+    if {_recipe} is "fire_liquor":
+        return "&7灼热如火，后劲十足" and "&e效果：&f力量提升 I (45秒)" and "&c醉酒度：&f+35"
+    if {_recipe} is "berry_wine":
+        return "&7果香四溢的甜酒" and "&e效果：&f跳跃提升 I (45秒)" and "&c醉酒度：&f+18"
+    if {_recipe} is "vodka":
+        return "&7来自北方的烈酒，纯净而致命" and "&e效果：&f抗性提升 I (30秒)" and "&c醉酒度：&f+40"
+    if {_recipe} is "rum":
+        return "&7海盗们的最爱，甜中带烈" and "&e效果：&f急迫 I (45秒)" and "&c醉酒度：&f+35"
+    if {_recipe} is "sake":
+        return "&7东洋的米酿精华，清冽甘醇" and "&e效果：&f水下呼吸 I (60秒)" and "&c醉酒度：&f+25"
+    if {_recipe} is "whiskey":
+        return "&7橡木桶中陈年的琥珀色佳酿" and "&e效果：&f抗性提升 I (30秒)" and "&c醉酒度：&f+30"
+    if {_recipe} is "tequila":
+        return "&7沙漠仙人掌的狂野馈赠" and "&e效果：&f火焰抗性 I (45秒)" and "&c醉酒度：&f+30"
+    if {_recipe} is "brandy":
+        return "&7金苹果酿成的奢华珍品" and "&e效果：&f生命恢复 II (20秒)" and "&c醉酒度：&f+25"
+    if {_recipe} is "absinthe":
+        return "&7泛着绿光的神秘禁酒，令人迷幻" and "&e效果：&f隐身 I (20秒)" and "&c醉酒度：&f+45"
+    if {_recipe} is "cider":
+        return "&7清爽酸甜的苹果发酵饮" and "&e效果：&f饱和 I (10秒)" and "&c醉酒度：&f+15"
+    if {_recipe} is "moonshine":
+        return "&7洞穴深处偷酿的非法烈酒" and "&e效果：&f夜视 I (60秒)" and "&c醉酒度：&f+30"
+    if {_recipe} is "gin":
+        return "&7松针清香的草本烈酒" and "&e效果：&f跳跃提升 II (30秒)"
+    if {_recipe} is "daughter_red":
+        return "&7窖藏多年的东方佳酿，醇厚绵长" and "&e效果：&f生命恢复 II (40秒) &7+ &f饱和 I (20秒)"
+    if {_recipe} is "baijiu":
+        return "&7烈如火，清如镜，一口入魂" and "&e效果：&f抗性提升 I (25秒) &7+ &f速度 I (30秒)"
+    return "&7来历不明的液体"
+
+function getDrunkAdd(recipe: text, distill: boolean) :: number:
+    set {_base} to 0
+    if {_recipe} is "wheat_beer":
+        set {_base} to 15
+    else if {_recipe} is "honey_wine":
+        set {_base} to 20
+    else if {_recipe} is "fake_fire":
+        set {_base} to 90
+    else if {_recipe} is "fire_liquor":
+        set {_base} to 35
+    else if {_recipe} is "berry_wine":
+        set {_base} to 18
+    else if {_recipe} is "vodka":
+        set {_base} to 40
+    else if {_recipe} is "rum":
+        set {_base} to 35
+    else if {_recipe} is "sake":
+        set {_base} to 25
+    else if {_recipe} is "whiskey":
+        set {_base} to 30
+    else if {_recipe} is "tequila":
+        set {_base} to 30
+    else if {_recipe} is "brandy":
+        set {_base} to 25
+    else if {_recipe} is "absinthe":
+        set {_base} to 45
+    else if {_recipe} is "cider":
+        set {_base} to 15
+    else if {_recipe} is "moonshine":
+        set {_base} to 30
+    else if {_recipe} is "gin":
+        set {_base} to 20
+    else if {_recipe} is "daughter_red":
+        set {_base} to 35
+    else if {_recipe} is "baijiu":
+        set {_base} to 45
+    if {_distill} is true:
+        add 15 to {_base}
+    return {_base}
+
+function applyWineEffect(p: player, recipe: text, distill: boolean):
+    if {_recipe} is "wheat_beer":
+        apply speed 1 to {_p} for 60 seconds
+    else if {_recipe} is "honey_wine":
+        apply regeneration 1 to {_p} for 30 seconds
+    else if {_recipe} is "fake_fire":
+        apply wither 1 to {_p} for 5 seconds
+        apply strength 8 to {_p} for 5 seconds
+        apply nausea 2 to {_p} for 180 seconds
+        apply darkness 1 to {_p} for 15 seconds
+        apply poison 1 to {_p} for 20 seconds
+    else if {_recipe} is "fire_liquor":
+        apply strength 1 to {_p} for 45 seconds
+    else if {_recipe} is "berry_wine":
+        apply jump boost 1 to {_p} for 45 seconds
+    else if {_recipe} is "vodka":
+        apply resistance 1 to {_p} for 30 seconds
+    else if {_recipe} is "rum":
+        apply haste 1 to {_p} for 45 seconds
+    else if {_recipe} is "sake":
+        apply water breathing 1 to {_p} for 60 seconds
+    else if {_recipe} is "whiskey":
+        apply resistance 1 to {_p} for 30 seconds
+    else if {_recipe} is "tequila":
+        apply fire resistance 1 to {_p} for 45 seconds
+    else if {_recipe} is "brandy":
+        apply regeneration 2 to {_p} for 20 seconds
+    else if {_recipe} is "absinthe":
+        apply invisibility 1 to {_p} for 20 seconds
+    else if {_recipe} is "cider":
+        apply saturation 1 to {_p} for 10 seconds
+    else if {_recipe} is "moonshine":
+        apply night vision 1 to {_p} for 60 seconds
+    else if {_recipe} is "gin":
+        apply jump boost 2 to {_p} for 30 seconds
+    else if {_recipe} is "daughter_red":
+        apply regeneration 2 to {_p} for 40 seconds
+        apply saturation 1 to {_p} for 20 seconds
+    else if {_recipe} is "baijiu":
+        apply resistance 1 to {_p} for 25 seconds
+        apply speed 1 to {_p} for 30 seconds
+
+    if {_distill} is true:
+        apply strength 1 to {_p} for 60 seconds
+        send "§6§l蒸馏的烈性在你体内燃烧！" to {_p}
+
+function createWine(recipe: text, distill: boolean) :: item:
+    set {_wine} to potion of water
+    if {_distill} is true:
+        set name of {_wine} to "§c§l蒸馏 %getWineName({_recipe})%"
+        set {_lore::*} to getWineLore({_recipe})
+        add "&0&lDISTILL" to {_lore::*}
+        set lore of {_wine} to {_lore::*}
+    else:
+        set name of {_wine} to getWineName({_recipe})
+        set lore of {_wine} to getWineLore({_recipe})
+    return {_wine}
+
+function isDistillable(recipe: text) :: boolean:
+    if {_recipe} is "vodka":
+        return true
+    if {_recipe} is "rum":
+        return true
+    if {_recipe} is "whiskey":
+        return true
+    if {_recipe} is "tequila":
+        return true
+    if {_recipe} is "brandy":
+        return true
+    if {_recipe} is "gin":
+        return true
+    if {_recipe} is "absinthe":
+        return true
+    if {_recipe} is "moonshine":
+        return true
+    if {_recipe} is "baijiu":
+        return true
+    return false
+
+function showDrunkBar(p: player, drunk: number):
+    if {_drunk} >= 80:
+        send action bar "§c§l醉酒度: %{_drunk}%/100 - 烂醉如泥！" to {_p}
+    else if {_drunk} >= 60:
+        send action bar "§e§l醉酒度: %{_drunk}%/100 - 酩酊大醉" to {_p}
+    else if {_drunk} >= 40:
+        send action bar "§a§l醉酒度: %{_drunk}%/100 - 微醺" to {_p}
+    else:
+        send action bar "§a§l醉酒度: %{_drunk}%/100 - 清醒" to {_p}
+
+function showFermentRecipeBook(p: player):
+    send "§6========== 发酵酒配方 ==========" to {_p}
+    send "" to {_p}
+    send "§f• §6小麦啤酒 §7= 小麦×3 | +15" to {_p}
+    send "§f• §d蜂蜜酒 §7= 蜂蜜瓶×2 + 小麦×1 | +20" to {_p}
+    send "§f• §c烈焰烈酒 §7= 烈焰粉×2 + 发酵蛛眼×1 | +35" to {_p}
+    send "§f• §a浆果甜酒 §7= 甜浆果×4 + 糖×2  | +18" to {_p}
+    send "§f• §b清酒 §7= 海草×3 + 小麦×2  | +25" to {_p}
+    send "§f• §c苹果酒 §7= 苹果×4 + 糖×1  | +15" to {_p}
+    send "§f• §c女儿红 §7= 岩浆膏×2 + 糖×1 + 小麦×5 | +35 " to {_p}
+    send "§f• §f伏特加 §7= 土豆×4 + 发酵蛛眼×1 | +40 (+55蒸馏)" to {_p}
+    send "§f• §6朗姆酒 §7= 甘蔗×6 + 糖×2 | +35 (+50蒸馏)" to {_p}
+    send "§f• §e威士忌 §7= 小麦×4 + 橡木原木×1 | +30 (+45蒸馏)" to {_p}
+    send "§f• §2龙舌兰 §7= 仙人掌×4 + 糖×1 | +30 (+45蒸馏)" to {_p}
+    send "§f• §6白兰地 §7= 金苹果×1 + 糖×2 | +25 (+40蒸馏)" to {_p}
+    send "§f• §a苦艾酒 §7= 诡异菌×3 + 发光浆果×2 | +45 (+60蒸馏)" to {_p}
+    send "§f• §e月光酒 §7= 发光浆果×5  | +30 (+45蒸馏)" to {_p}
+    send "§f• §a杜松子酒 §7= 云杉树苗×3 + 小麦×1 | +20 (+35蒸馏)" to {_p}
+    send "" to {_p}
+    send "§7右键§6陶罐§7放入原料酿造，手持§f玻璃瓶§7取出成品" to {_p}
+    send "§6==================================" to {_p}
+
+function showDistillRecipeBook(p: player):
+    send "§c========== 蒸馏酒配方 ==========" to {_p}
+    send "" to {_p}
+    send "§7§o（陶罐下方放置营火即可进入蒸馏模式，时间翻倍，酒劲更烈）" to {_p}
+    send "" to {_p}
+    send "§f• §f伏特加 §7= 土豆×4 + 发酵蛛眼×1 | +40 (+55蒸馏)" to {_p}
+    send "§f• §6朗姆酒 §7= 甘蔗×6 + 糖×2 | +35 (+50蒸馏)" to {_p}
+    send "§f• §e威士忌 §7= 小麦×4 + 橡木原木×1 | +30 (+45蒸馏)" to {_p}
+    send "§f• §2龙舌兰 §7= 仙人掌×4 + 糖×1 | +30 (+45蒸馏)" to {_p}
+    send "§f• §6白兰地 §7= 金苹果×1 + 糖×2 | +25 (+40蒸馏)" to {_p}
+    send "§f• §a苦艾酒 §7= 诡异菌×3 + 发光浆果×2 | +45 (+60蒸馏)" to {_p}
+    send "§f• §e月光酒 §7= 发光浆果×5  | +30 (+45蒸馏)" to {_p}
+    send "§f• §a杜松子酒 §7= 云杉树苗×3 + 小麦×1 | +20 (+35蒸馏)" to {_p}
+    send "§f• §c白酒 §7= 干草块×2 + 发酵蛛眼×1 | +60 (仅蒸馏)" to {_p}
+    send "" to {_p}
+    send "§7右键§6陶罐§7放入原料，§c营火§7下方加热蒸馏" to {_p}
+    send "§c==================================" to {_p}
+
+# ============================================
+# 主要事件 - 陶罐交互
+# ============================================
+
+on rightclick:
+    clicked block is a decorated pot
+    set {_loc} to location of clicked block
+    set {_key} to brewKey({_loc})
+
+    if {brewery::%{_key}%::status} is "brewing":
+        cancel event
+        set {_start} to unix timestamp of {brewery::%{_key}%::start}
+        set {_now} to unix timestamp of now
+        set {_elapsed} to {_now} - {_start}
+        set {_need} to {brewery::%{_key}%::time}
+        set {_left} to {_need} - {_elapsed}
+        if {_left} > 0:
+            send "§e这坛酒还在酿造中，还需 §6%{_left}%§e 秒" to player
+            play sound "block.brewing_stand.brew" to player
+        else:
+            set {brewery::%{_key}%::status} to "done"
+            send "§a这坛酒已经酿好了！手持§f玻璃瓶§a右键取出" to player
+            play sound "block.note_block.chime" at volume 1 at pitch 1 to player
+            draw 20 happy villager particles at {_loc}
+        stop
+
+    if {brewery::%{_key}%::status} is "done":
+        cancel event
+        if player's tool is glass bottle:
+            set {_recipe} to {brewery::%{_key}%::recipe}
+            set {_distill} to {brewery::%{_key}%::distill}
+            if {_distill} is not set:
+                set {_distill} to false
+            set {_wine} to createWine({_recipe}, {_distill})
+            remove 1 of player's tool from player
+            give {_wine} to player
+            delete {brewery::%{_key}%::*}
+            remove {_key} from {brewery::pots::*}
+            send "§a你取出了一瓶 §6%getWineName({_recipe})%§a！" to player
+            play sound "item.bottle.fill" to player
+            draw 10 splash particles at {_loc}
+        else:
+            send "§e这坛酒已经酿好了，手持§f玻璃瓶§e右键取出" to player
+        stop
+
+    # 空闲状态 - 检查配方
+    set {_recipe} to getRecipe(player)
+    if {_recipe} is not "none":
+        cancel event
+        # 检测营火
+        set {_below} to block below {_loc}
+        set {_isCampfire} to false
+        if {_below} is a campfire:
+            set {_isCampfire} to true
+        else if {_below} is a soul campfire:
+            set {_isCampfire} to true
+
+        if {_isCampfire} is true:
+            if isDistillable({_recipe}) is true:
+                set {_distill} to true
+                set {_time} to getBrewTime({_recipe}) * 2
+                send "§6🔥 进入§c蒸馏模式§6！酿造时间翻倍，酒劲更烈！" to player
+            else:
+                send "§c这种酒不适合蒸馏，请移除营火后再酿造。" to player
+                stop
+        else:
+            if {_recipe} is "baijiu":
+                send "§c白酒必须通过蒸馏酿造，请在陶罐下方放置营火。" to player
+                stop
+            set {_distill} to false
+            set {_time} to getBrewTime({_recipe})
+
+        removeIngredients(player, {_recipe})
+        set {brewery::%{_key}%::status} to "brewing"
+        set {brewery::%{_key}%::recipe} to {_recipe}
+        set {brewery::%{_key}%::distill} to {_distill}
+        set {brewery::%{_key}%::start} to now
+        set {brewery::%{_key}%::time} to {_time}
+        set {brewery::%{_key}%::loc} to {_loc}
+        add {_key} to {brewery::pots::*}
+        send "§a你开始制作 §6%getWineName({_recipe})%§a，需要 §6%{_time}%§a 秒" to player
+        play sound "block.brewing_stand.brew" to player
+        draw 10 witch particles at {_loc}
+    else:
+        cancel event
+        send "§c你手中的原料无法酿酒。" to player
+        send " " to player
+        send "§7请选择查看配方：" to player
+        send formatted "§6点击查看发酵酒配方><cmd:/brewery ferment>§6§l[发酵酒配方]§r<reset>  §c点击查看蒸馏酒配方><cmd:/brewery distill>§c§l[蒸馏酒配方]§r<reset>" to player
+
+# ============================================
+# 饮酒事件
+# ============================================
+
+on consume:
+    if event-item is a potion:
+        set {_name} to name of event-item
+        set {_recipe} to "none"
+        set {_distill} to false
+
+        # 先匹配蒸馏版（15种）
+        if {_name} is "§c§l蒸馏 &6小麦啤酒":
+            set {_recipe} to "wheat_beer"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &d蜂蜜酒":
+            set {_recipe} to "honey_wine"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &c烈焰烈酒&r":
+            set {_recipe} to "fake_fire"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &c烈焰烈酒":
+            set {_recipe} to "fire_liquor"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &a浆果甜酒":
+            set {_recipe} to "berry_wine"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &f伏特加":
+            set {_recipe} to "vodka"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &6朗姆酒":
+            set {_recipe} to "rum"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &b清酒":
+            set {_recipe} to "sake"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &e威士忌":
+            set {_recipe} to "whiskey"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &2龙舌兰":
+            set {_recipe} to "tequila"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &6白兰地":
+            set {_recipe} to "brandy"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &a苦艾酒":
+            set {_recipe} to "absinthe"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &c苹果酒":
+            set {_recipe} to "cider"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &e月光酒":
+            set {_recipe} to "moonshine"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &a杜松子酒":
+            set {_recipe} to "gin"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &c女儿红":
+            set {_recipe} to "daughter_red"
+            set {_distill} to true
+        else if {_name} is "§c§l蒸馏 &f白酒":
+            set {_recipe} to "baijiu"
+            set {_distill} to true
+
+        # 再匹配普通版（17种）
+        else if {_name} is "&6小麦啤酒":
+            set {_recipe} to "wheat_beer"
+        else if {_name} is "&d蜂蜜酒":
+            set {_recipe} to "honey_wine"
+        else if {_name} is "&c烈焰烈酒&r":
+            set {_recipe} to "fake_fire"
+        else if {_name} is "&c烈焰烈酒":
+            set {_recipe} to "fire_liquor"
+        else if {_name} is "&a浆果甜酒":
+            set {_recipe} to "berry_wine"
+        else if {_name} is "&f伏特加":
+            set {_recipe} to "vodka"
+        else if {_name} is "&6朗姆酒":
+            set {_recipe} to "rum"
+        else if {_name} is "&b清酒":
+            set {_recipe} to "sake"
+        else if {_name} is "&e威士忌":
+            set {_recipe} to "whiskey"
+        else if {_name} is "&2龙舌兰":
+            set {_recipe} to "tequila"
+        else if {_name} is "&6白兰地":
+            set {_recipe} to "brandy"
+        else if {_name} is "&a苦艾酒":
+            set {_recipe} to "absinthe"
+        else if {_name} is "&c苹果酒":
+            set {_recipe} to "cider"
+        else if {_name} is "&e月光酒":
+            set {_recipe} to "moonshine"
+        else if {_name} is "&a杜松子酒":
+            set {_recipe} to "gin"
+        else if {_name} is "&c女儿红":
+            set {_recipe} to "daughter_red"
+        else if {_name} is "&f白酒":
+            set {_recipe} to "baijiu"
+
+        if {_recipe} is not "none":
+            applyWineEffect(player, {_recipe}, {_distill})
+
+            set {_add} to getDrunkAdd({_recipe}, {_distill})
+            set {_uuid} to uuid of player
+            if {brewery::drunk::%{_uuid}%} is not set:
+                set {brewery::drunk::%{_uuid}%} to 0
+            add {_add} to {brewery::drunk::%{_uuid}%}
+            if {brewery::drunk::%{_uuid}%} > {@maxDrunk}:
+                set {brewery::drunk::%{_uuid}%} to {@maxDrunk}
+
+            if {_distill} is true:
+                send "§e你饮用了 §c§l蒸馏 §6%getWineName({_recipe})%§e，醉酒度 §c+%{_add}%§e！" to player
+            else:
+                send "§e你饮用了 §6%getWineName({_recipe})%§e，醉酒度 §c+%{_add}%§e！" to player
+            play sound "entity.generic.drink" to player
+
+            set {_drunk} to {brewery::drunk::%{_uuid}%}
+            showDrunkBar(player, {_drunk})
+
+# ============================================
+# 喝奶桶解酒
+# ============================================
+
+on consume:
+    event-item is milk bucket
+    set {_uuid} to uuid of player
+    set {_drunk} to {brewery::drunk::%{_uuid}%}
+    if {_drunk} is not set:
+        set {_drunk} to 0
+    if {_drunk} > 0:
+        set {_before} to {_drunk}
+        remove 40 from {_drunk}
+        if {_drunk} < 0:
+            set {_drunk} to 0
+        set {brewery::drunk::%{_uuid}%} to {_drunk}
+        send "§a你喝了一桶牛奶，醉酒度从 §c%{_before}% §a降到了 §a%{_drunk}%§a！" to player
+        play sound "entity.generic.drink" to player
+        showDrunkBar(player, {_drunk})
+
+# ============================================
+# 醉酒度持续显示 (每3秒刷新)
+# ============================================
+
+every {@displayTick}:
+    loop all players:
+        set {_uuid} to uuid of loop-player
+        set {_drunk} to {brewery::drunk::%{_uuid}%}
+        if {_drunk} is not set:
+            set {_drunk} to 0
+        if {_drunk} > 0:
+            showDrunkBar(loop-player, {_drunk})
+
+# ============================================
+# 酿造完成粒子提示
+# ============================================
+
+every 3 seconds:
+    loop {brewery::pots::*}:
+        set {_key} to loop-value
+        if {brewery::%{_key}%::status} is "done":
+            draw 5 happy villager particles at {brewery::%{_key}%::loc}
+
+# ============================================
+# 醉酒度衰减 & 负面效果循环
+# ============================================
+
+every {@checkTick}:
+    loop all players:
+        set {_pl} to loop-player
+        set {_uuid} to uuid of {_pl}
+        set {_drunk} to {brewery::drunk::%{_uuid}%}
+        if {_drunk} is not set:
+            set {_drunk} to 0
+
+        if {_drunk} >= 80:
+            damage {_pl} by 1 heart
+            apply nausea 1 to {_pl} for 15 seconds
+            apply slowness 1 to {_pl} for 15 seconds
+            send action bar "§c§l烂醉如泥！你感到极度不适..." to {_pl}
+            chance of 30%:
+                push {_pl} forwards at speed 0.2
+                send "§7§o...你踉跄了一下，差点摔倒..." to {_pl}
+            chance of 10%:
+                send "§c§o...天旋地转..." to {_pl}
+        else if {_drunk} >= 60:
+            apply nausea 1 to {_pl} for 10 seconds
+            send action bar "§e§l头晕目眩...你喝太多了" to {_pl}
+            chance of 20%:
+                send "§7§o...世界在你眼中变得模糊..." to {_pl}
+        else if {_drunk} >= 40:
+            chance of 50%:
+                apply nausea 1 to {_pl} for 5 seconds
+            chance of 30%:
+                send "§7§o...你感到一丝眩晕..." to {_pl}
+
+every {@drunkTick}:
+    loop all players:
+        set {_uuid} to uuid of loop-player
+        set {_drunk} to {brewery::drunk::%{_uuid}%}
+        if {_drunk} is not set:
+            set {_drunk} to 0
+        if {_drunk} > 0:
+            remove {@drunkDecay} from {_drunk}
+            if {_drunk} < 0:
+                set {_drunk} to 0
+            set {brewery::drunk::%{_uuid}%} to {_drunk}
+            if {_drunk} is 0:
+                send "§a你的醉酒度已归零，完全清醒了。" to loop-player
+
+# ============================================
+# 死亡重置醉酒度
+# ============================================
+
+on death of player:
+    set {_uuid} to victim's uuid
+    set {_drunk} to {brewery::drunk::%{_uuid}%}
+    if {_drunk} is not set:
+        set {_drunk} to 0
+    if {_drunk} > 0:
+        set {brewery::drunk::%{_uuid}%} to 0
+        send "§a你酒醒了..." to victim
+
+# ============================================
+# 命令
+# ============================================
+
+command /brewery [<text>]:
+    description: 查看酿酒系统信息
+    usage: /brewery [ferment/distill]
+    executable by: players
+    trigger:
+        if arg-1 is "ferment":
+            showFermentRecipeBook(player)
+            stop
+        if arg-1 is "distill":
+            showDistillRecipeBook(player)
+            stop
+        if arg-1 is "recipes":
+            showFermentRecipeBook(player)
+            stop
+
+        set {_uuid} to uuid of player
+        set {_drunk} to {brewery::drunk::%{_uuid}%}
+        if {_drunk} is not set:
+            set {_drunk} to 0
+
+        send "§6========== 陶罐酿酒系统 ==========" to player
+        send "" to player
+        if {_drunk} >= 80:
+            send "§c§l当前状态：烂醉如泥 §7(%{_drunk}%/100)" to player
+        else if {_drunk} >= 60:
+            send "§e当前状态：酩酊大醉 §7(%{_drunk}%/100)" to player
+        else if {_drunk} >= 40:
+            send "§a当前状态：微醺 §7(%{_drunk}%/100)" to player
+        else:
+            send "§a当前状态：清醒 §7(%{_drunk}%/100)" to player
+        send "" to player
+        send "§7使用 §f/brewery recipes §7查看所有配方" to player
+        send "§7右键§6陶罐§7放入原料酿造" to player
+        send "§7手持§f玻璃瓶§7右键取出成品" to player
+        send "§7饮用后获得效果，但会增加§c醉酒度§7！" to player
+        send "§7醉酒度过高会产生§c负面效果§7..." to player
+        send "§6==================================" to player
