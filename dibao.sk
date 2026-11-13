@@ -1,5 +1,7 @@
 # ============================================
-# 低保系统 - 修复 player_list 序列化问题
+# 低保系统
+# v1.1 修复：所有读写入口先统一重载 YAML，
+#      避免内存旧快照覆盖管理员在磁盘上的手工修改
 # ============================================
 
 options:
@@ -11,10 +13,40 @@ options:
     dibao.min-balance: 20
 
 # ============================================
+# 统一重载
+# 任何要读写数据的入口都必须先调用它，
+# 保证操作基于磁盘最新内容而不是启动时的缓存
+# ============================================
+function dibaoReload():
+    load yaml "{@dibao.data}" as "{@dibao.alias}"
+
+# ============================================
+# 清理 player_list 中的孤立条目
+# 手工删掉玩家节点后，列表里会留下指向空节点的名字，
+# 导致遍历到无效数据；这里在每次遍历前顺手清掉
+# ============================================
+function dibaoPruneList():
+    set {_players::*} to yaml list "player_list" from "{@dibao.alias}"
+    if {_players::*} is not set:
+        stop
+    set {_changed} to false
+    loop {_players::*}:
+        set {_u} to loop-value
+        if {_u} is "":
+            remove "" from yaml list "player_list" from "{@dibao.alias}"
+            set {_changed} to true
+            continue
+        if yaml value "%{_u}%.status" from "{@dibao.alias}" is not set:
+            remove {_u} from yaml list "player_list" from "{@dibao.alias}"
+            set {_changed} to true
+    if {_changed} is true:
+        save yaml "{@dibao.alias}"
+
+# ============================================
 # 初始化
 # ============================================
 on load:
-    load yaml "{@dibao.data}" as "{@dibao.alias}"
+    dibaoReload()
     send "&a[低保系统] 加载成功！" to console
 
 # ============================================
@@ -22,6 +54,7 @@ on load:
 # ============================================
 on join:
     wait 3 seconds
+    dibaoReload()
     set {_name} to name of player
     set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
     
@@ -55,7 +88,9 @@ on join:
     
     else if {_status} is "active":
         set {_today} to now formatted as "yyyy-MM-dd"
-        set {_last_date} to {_last_paid} formatted as "yyyy-MM-dd" if {_last_paid} is set, else "none"
+        set {_last_date} to "none"
+        if {_last_paid} is set:
+            set {_last_date} to first 10 characters of "%{_last_paid}%"
         
         send ""
         send "&6━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -97,6 +132,9 @@ command /dibao [<text>] [<text>]:
                 send "&c你的金币还有 &e%{_balance}% &c，不符合申请条件（需低于 &e{@dibao.min-balance}&c）！"
                 stop
             
+            # 读之前先重载，避免拿旧缓存判断，也避免后续写回覆盖别人的数据
+            dibaoReload()
+            
             set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
             
             if {_status} is set:
@@ -120,7 +158,10 @@ command /dibao [<text>] [<text>]:
             set yaml value "%{_name}%.status" from "{@dibao.alias}" to "pending"
             set yaml value "%{_name}%.apply_time" from "{@dibao.alias}" to {_now}
             
-            add {_name} to yaml list "player_list" from "{@dibao.alias}"
+            # 去重：列表里已有该玩家就不再重复写入
+            set {_list::*} to yaml list "player_list" from "{@dibao.alias}"
+            if {_list::*} does not contain {_name}:
+                add {_name} to yaml list "player_list" from "{@dibao.alias}"
             
             save yaml "{@dibao.alias}"
             
@@ -138,6 +179,7 @@ command /dibao [<text>] [<text>]:
         # ========== status ==========
         else if arg-1 is "status":
             set {_name} to name of player
+            dibaoReload()
             set {_status} to yaml value "%{_name}%.status" from "{@dibao.alias}"
             
             if {_status} is not set:
@@ -175,6 +217,7 @@ command /dibao [<text>] [<text>]:
                 stop
             
             load yaml "{@dibao.data}" as "{@dibao.alias}"
+            dibaoPruneList()
             set {_found} to false
             send "&6━━━━━━ 待审核低保申请 ━━━━━━"
             
@@ -232,6 +275,9 @@ command /dibao [<text>] [<text>]:
                 send "&c用法: /dibao add <玩家名>"
                 stop
             
+            # 写之前先重载，避免覆盖磁盘上的最新审核结果
+            dibaoReload()
+            
             set {_target_name} to arg-2
             set {_target} to {_target_name} parsed as offline player
             
@@ -263,7 +309,9 @@ command /dibao [<text>] [<text>]:
             set yaml value "%{_name}%.apply_time" from "{@dibao.alias}" to {_now}
             set yaml value "%{_name}%.added_by" from "{@dibao.alias}" to name of player
             
-            add {_name} to yaml list "player_list" from "{@dibao.alias}"
+            set {_list::*} to yaml list "player_list" from "{@dibao.alias}"
+            if {_list::*} does not contain {_name}:
+                add {_name} to yaml list "player_list" from "{@dibao.alias}"
             save yaml "{@dibao.alias}"
             
             send "&a✔ 已将 &e%{_name}% &a加入低保列表！"
@@ -285,10 +333,11 @@ command /dibao [<text>] [<text>]:
                 stop
             
             send "&6━━━━━━ 手动测试发放 ━━━━━━" to player
-            load yaml "{@dibao.data}" as "{@dibao.alias}"
+            # 写之前先重载，确保测试基于磁盘最新数据
+            dibaoReload()
             set {_paid_count} to 0
             
-            # 关键修复：用 yaml list 读取
+            # 用 yaml list 读取
             set {_players::*} to yaml list "player_list" from "{@dibao.alias}"
             if {_players::*} is not set:
                 send "&c错误: player_list 为空！请先 /dibao 申请" to player
@@ -337,6 +386,8 @@ command /dibao [<text>] [<text>]:
                                 if {_new_days} <= 0:
                                     set yaml value "%{_name}%.status" from "{@dibao.alias}" to "completed"
                                     send "&a%{_name}% 本轮已发完！" to player
+                                    remove {_name} from yaml list "player_list" from "{@dibao.alias}"
+                                    save yaml "{@dibao.alias}"
                             else:
                                 send "&c%{_name}% 玩家对象获取失败" to player
                         else:
@@ -363,23 +414,22 @@ command /dibao [<text>] [<text>]:
 
 # ============================================
 # 每日发放
+# 不再依赖“整点正好落在 00 点”：每个整点都检查一次
+# last_run_date，发现今天还没发就补发。这样服务器在
+# 00 点停机或计时相位错过，恢复后仍会补上当天发放。
 # ============================================
 every hour:
-    set {_hour} to now formatted as "HH"
-    if {_hour} is not "00":
-        stop
-    
-    load yaml "{@dibao.data}" as "{@dibao.alias}"
-    
-    # 防重复
     set {_today} to now formatted as "yyyy-MM-dd"
+    
+    dibaoReload()
+    
+    # 防重复：今天已经发过就跳过
     set {_last_run} to yaml value "last_run_date" from "{@dibao.alias}"
     if {_last_run} is {_today}:
         stop
     
     set {_paid_count} to 0
     
-    # 关键修复：用 yaml list 读取
     set {_players::*} to yaml list "player_list" from "{@dibao.alias}"
     if {_players::*} is not set:
         stop
@@ -423,6 +473,7 @@ every hour:
                         
                         if {_new_days} <= 0:
                             set yaml value "%{_name}%.status" from "{@dibao.alias}" to "completed"
+                            remove {_name} from yaml list "player_list" from "{@dibao.alias}"
                             if {_player} is online:
                                 send "&a[低保] 本轮低保已全部发放完毕！共计获得 &e%{_new_total}% &a金币。" to {_player}
     
